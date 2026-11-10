@@ -1,4 +1,5 @@
 import DownloadButton from './DownloadButton.jsx';
+import { formatDate, formatSize } from '../utils/formatters.js';
 
 export default function DocumentList({ documents, loading, onError }) {
   if (loading) {
@@ -38,17 +39,4 @@ export default function DocumentList({ documents, loading, onError }) {
       </table>
     </div>
   );
-}
-
-function formatDate(value) {
-  return new Intl.DateTimeFormat('pt-BR', {
-    dateStyle: 'medium',
-    timeStyle: 'short',
-  }).format(new Date(value));
-}
-
-function formatSize(bytes) {
-  if (bytes < 1024) return `${bytes} B`;
-  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(0)} KB`;
-  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }

@@ -32,9 +32,13 @@ export default function App() {
     };
   }, [refreshKey]);
 
+  function reloadDocuments() {
+    setRefreshKey((key) => key + 1);
+  }
+
   function handleUploaded(document) {
     setNotice({ type: 'success', message: `${document.originalName} enviado com sucesso.` });
-    setRefreshKey((key) => key + 1);
+    reloadDocuments();
   }
 
   function handleActionError(error) {
@@ -95,7 +99,7 @@ export default function App() {
           <button
             className="text-button"
             type="button"
-            onClick={() => setRefreshKey((key) => key + 1)}
+            onClick={reloadDocuments}
             disabled={loading}
           >
             Atualizar lista
@@ -104,7 +108,7 @@ export default function App() {
         {loadError ? (
           <div className="list-message list-error" role="alert">
             <span>{loadError}</span>
-            <button type="button" className="text-button" onClick={() => setRefreshKey((key) => key + 1)}>
+            <button type="button" className="text-button" onClick={reloadDocuments}>
               Tentar novamente
             </button>
           </div>

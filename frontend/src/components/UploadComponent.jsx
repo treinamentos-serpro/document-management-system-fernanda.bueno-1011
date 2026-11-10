@@ -1,5 +1,6 @@
 import { useRef, useState } from 'react';
 import { uploadDocument } from '../services/documents.js';
+import { formatSize } from '../utils/formatters.js';
 
 export default function UploadComponent({ onUploaded }) {
   const inputRef = useRef(null);
@@ -53,10 +54,4 @@ export default function UploadComponent({ onUploaded }) {
       {error && <p className="upload-error" id="upload-error" role="alert">{error}</p>}
     </form>
   );
-}
-
-function formatSize(bytes) {
-  if (bytes < 1024) return `${bytes} B`;
-  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(0)} KB`;
-  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
