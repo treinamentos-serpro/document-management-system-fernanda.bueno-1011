@@ -1,5 +1,5 @@
-import { useRef, useState } from 'react';
-import { uploadDocument } from '../services/documents.js';
+import { useEffect, useRef, useState } from 'react';
+import { getUploadConfig, uploadDocument } from '../services/documents.js';
 import { formatSize } from '../utils/formatters.js';
 
 export default function UploadComponent({ onUploaded }) {
@@ -7,10 +7,27 @@ export default function UploadComponent({ onUploaded }) {
   const [file, setFile] = useState(null);
   const [error, setError] = useState('');
   const [uploading, setUploading] = useState(false);
+  const [maxFileSizeBytes, setMaxFileSizeBytes] = useState(null);
+
+  useEffect(() => {
+    let active = true;
+    getUploadConfig()
+      .then(({ maxFileSizeBytes: limit }) => {
+        if (active) setMaxFileSizeBytes(limit);
+      })
+      .catch(() => {});
+    return () => {
+      active = false;
+    };
+  }, []);
 
   async function handleSubmit(event) {
     event.preventDefault();
     if (!file || uploading) return;
+    if (maxFileSizeBytes && file.size > maxFileSizeBytes) {
+      setError(`O arquivo excede o limite de ${formatSize(maxFileSizeBytes)}.`);
+      return;
+    }
 
     setUploading(true);
     setError('');
@@ -44,7 +61,11 @@ export default function UploadComponent({ onUploaded }) {
           <span className="file-picker-mark" aria-hidden="true">+</span>
           <span className="file-picker-text">
             <strong>{file ? file.name : 'Escolher um arquivo'}</strong>
-            <span id="upload-hint">{file ? `${formatSize(file.size)} selecionado` : 'Qualquer formato · até 10 MiB'}</span>
+            <span id="upload-hint">
+              {file
+                ? `${formatSize(file.size)} selecionado`
+                : `Qualquer formato · ${maxFileSizeBytes ? `até ${formatSize(maxFileSizeBytes)}` : 'limite definido pelo servidor'}`}
+            </span>
           </span>
         </label>
       </div>

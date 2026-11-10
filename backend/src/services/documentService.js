@@ -2,7 +2,9 @@ const fs = require('node:fs/promises');
 const path = require('node:path');
 const crypto = require('node:crypto');
 
-function createDocumentService(documentRepository) {
+function createDocumentService(documentRepository, storageDirectory) {
+  const resolvedStorageDirectory = path.resolve(storageDirectory);
+
   return {
     async createDocument(file, owner) {
       const document = {
@@ -14,7 +16,7 @@ function createDocumentService(documentRepository) {
       };
       await documentRepository.save({
         ...document,
-        filePath: file.path,
+        storedFileName: path.basename(file.path),
         mimeType: file.mimetype,
       });
       return document;
@@ -25,7 +27,7 @@ function createDocumentService(documentRepository) {
     },
 
     async getDocumentForDownload(id, owner) {
-      const document = documentRepository.findByIdAndOwner(id, owner);
+      const document = await documentRepository.findByIdAndOwner(id, owner);
       if (!document) {
         const error = new Error('Documento não encontrado.');
         error.statusCode = 404;
@@ -33,15 +35,24 @@ function createDocumentService(documentRepository) {
         throw error;
       }
 
+      const filePath = path.resolve(resolvedStorageDirectory, document.storedFileName);
+      const relativePath = path.relative(resolvedStorageDirectory, filePath);
+      if (!relativePath || relativePath.startsWith('..') || path.isAbsolute(relativePath)) {
+        const error = new Error('Documento não encontrado.');
+        error.statusCode = 404;
+        error.code = 'DOCUMENT_NOT_FOUND';
+        throw error;
+      }
+
       try {
-        await fs.access(document.filePath);
+        await fs.access(filePath);
       } catch {
         const error = new Error('Arquivo do documento não encontrado no armazenamento local.');
         error.statusCode = 404;
         error.code = 'FILE_NOT_FOUND';
         throw error;
       }
-      return document;
+      return { ...document, filePath };
     },
 
     async removeUploadedFile(filePath) {

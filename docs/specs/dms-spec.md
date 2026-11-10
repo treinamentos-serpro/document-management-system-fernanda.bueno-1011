@@ -12,14 +12,13 @@ Disponibilizar uma aplicação web para enviar, listar e baixar documentos armaz
 - Listagem dos documentos associados ao usuário da requisição.
 - Download de um documento pelo identificador.
 - Armazenamento dos arquivos em `backend/storage` com `multer` e `diskStorage`.
-- Armazenamento dos metadados em memória.
+- Armazenamento local e durável dos metadados em `backend/storage/.documents.json`.
 - Interface React para upload, listagem e download.
 
 ### Fora do escopo
 
 - Armazenamento externo ou em nuvem.
 - Versionamento de documentos.
-- Persistência durável dos metadados após reinício do backend.
 - Autenticação e autorização completas.
 - Remoção ou edição de documentos.
 
@@ -41,8 +40,8 @@ Disponibilizar uma aplicação web para enviar, listar e baixar documentos armaz
 | ID | Requisito |
 | --- | --- |
 | RNF-01 | Os arquivos são armazenados apenas no filesystem local em `backend/storage`; não usar serviços externos. |
-| RNF-02 | Os metadados são mantidos em memória e podem ser perdidos ao reiniciar o backend. |
-| RNF-03 | A porta do backend e o limite máximo de upload são configuráveis por variáveis de ambiente (`PORT` e `MAX_FILE_SIZE_BYTES`). |
+| RNF-02 | Os metadados são gravados atomicamente em arquivo JSON local e sobrevivem ao reinício do backend. |
+| RNF-03 | Porta, limites de upload e cotas são configuráveis por variáveis de ambiente. |
 | RNF-04 | O limite padrão de upload é 10 MiB. |
 | RNF-05 | Arquivos recebem nome interno UUID; o nome original é preservado apenas como metadado e nome de download. |
 | RNF-06 | O backend usa Node.js, Express e CommonJS; o frontend usa React, Vite e módulos ES. |
@@ -59,37 +58,42 @@ Disponibilizar uma aplicação web para enviar, listar e baixar documentos armaz
 | `originalName` | string | Nome original fornecido no upload, reduzido ao nome-base. |
 | `size` | number | Tamanho do arquivo em bytes. |
 | `uploadedAt` | string | Data e hora do upload em ISO 8601 UTC. |
-| `owner` | string | Identificador do usuário obtido do cabeçalho `X-User-Id`. |
+| `owner` | string | Identificador resolvido pela integração de identidade do backend. |
 
 ### Campos internos, não expostos pela API
 
 | Campo | Tipo | Descrição |
 | --- | --- | --- |
-| `filePath` | string | Caminho absoluto do arquivo salvo localmente. |
+| `storedFileName` | string | UUID do nome interno; o caminho é derivado do diretório local configurado. |
 | `mimeType` | string | Tipo de mídia informado no multipart, reservado ao uso interno. |
 
-Os registros são mantidos em um `Map` em memória. Os campos internos não devem ser incluídos nas respostas JSON.
+Os registros são carregados em memória e persistidos em `.documents.json` por substituição atômica. O diretório deve ser privado ao processo do DMS. Os campos internos não devem ser incluídos nas respostas JSON.
 
 ## 6. Contratos de API
 
 Durante o desenvolvimento, o frontend chama os endpoints pelo prefixo `/api`; o proxy Vite remove esse prefixo antes de encaminhar a requisição ao backend. O backend expõe as rotas sem o prefixo `/api`.
 
+### `GET /config`
+
+- Sucesso: `200 OK`, JSON com `maxFileSizeBytes`, para alinhar a interface ao limite ativo.
+
 ### `POST /upload`
 
 - Entrada: `multipart/form-data`, um arquivo no campo `file`.
-- Cabeçalho opcional: `X-User-Id`, com até 100 caracteres. Na ausência, usar `default-user`.
+- No desenvolvimento, `X-User-Id` continua opcional e usa `default-user` como fallback.
+- Em produção, configure `DMS_USER_ID_SECRET` ou injete `resolveOwner` no host. Com HMAC, um proxy autenticado envia `X-User-Id`, `X-User-Timestamp` (Unix em segundos) e `X-User-Signature`, calculada como HMAC-SHA256 de `timestamp\nuserId`; o timestamp deve estar dentro de 60 segundos. O proxy deve substituir os valores enviados pelo cliente, e o backend não deve ficar acessível sem passar por esse proxy.
 - O cliente não pode escolher `id`, `owner` nem o nome interno do arquivo.
 - Sucesso: `201 Created`, corpo JSON com os metadados públicos do documento.
-- Erros: `400` para arquivo ausente ou identificador inválido; `413` para arquivo acima do limite.
+- Erros: `400` para arquivo ausente ou multipart inválido; `401` para identidade inválida; `409` para cota de documentos excedida; `413` para arquivo ou cota de bytes excedida; `429` para excesso de uploads.
 
 ### `GET /documents`
 
-- Cabeçalho opcional: `X-User-Id`, com o mesmo fallback do upload.
+- A identidade segue a mesma regra do upload.
 - Sucesso: `200 OK`, array JSON de documentos pertencentes ao usuário. Sem documentos, retorna `[]`.
 
 ### `GET /documents/:id/download`
 
-- Cabeçalho opcional: `X-User-Id`, com o mesmo fallback.
+- A identidade segue a mesma regra do upload.
 - Sucesso: `200 OK`, conteúdo binário como anexo com o nome original.
 - Erro: `404 Not Found` se o documento não existir, não pertencer ao usuário ou o arquivo não estiver no disco.
 
@@ -112,11 +116,15 @@ Mensagens de erro devem ser legíveis; detalhes internos do servidor não devem 
 - As rotas conectam os endpoints ao controller e aplicam o middleware de upload.
 - Controllers fazem a tradução HTTP, leem o identificador do usuário e tratam respostas.
 - Services aplicam as regras de criação e consulta de documentos.
-- Repositories mantêm os metadados em memória e isolam o acesso à persistência.
+- Repositories isolam o acesso ao índice JSON local; gravações usam arquivo temporário e substituição atômica.
 - O ponto de composição do backend configura `multer.diskStorage` com destino fixo em `backend/storage` e nome de arquivo UUID.
 - A falha ao registrar metadados após o upload deve remover o arquivo recém-gravado.
-- `X-User-Id` é apenas um identificador de isolamento funcional, não uma credencial. Sem autenticação, um cliente pode escolher esse valor; o sistema não deve ser considerado seguro para múltiplos usuários não confiáveis.
+- No desenvolvimento, `X-User-Id` permanece um identificador funcional não autenticado. Em produção, o backend falha ao iniciar sem segredo HMAC ou um resolver de identidade confiável.
 - O proxy Vite encaminha `/api/*` para o backend local na porta configurada no proxy.
+- O diretório de arquivos tem permissão `0700`; o índice de metadados é gravado com permissão `0600`.
+- Padrões: `MAX_FILE_SIZE_BYTES=10485760`, `MAX_DOCUMENTS_PER_USER=100`, `MAX_STORAGE_BYTES_PER_USER=1073741824` e `MAX_UPLOADS_PER_MINUTE=20` por IP e processo. O limitador em memória não substitui proteção distribuída em implantações com múltiplas instâncias.
+- O repositório JSON pressupõe um único processo gravando no mesmo diretório; múltiplas instâncias exigem persistência com coordenação transacional.
+- O backend valida nomes internos UUID ao carregar metadados e deriva o caminho do diretório de armazenamento; não usa caminho informado pelo cliente.
 
 ## 8. Plano de execução
 

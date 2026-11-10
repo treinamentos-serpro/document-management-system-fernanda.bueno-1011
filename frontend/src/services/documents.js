@@ -9,6 +9,12 @@ async function getError(response) {
   }
 }
 
+export async function getUploadConfig() {
+  const response = await fetch('/api/config');
+  if (!response.ok) throw await getError(response);
+  return response.json();
+}
+
 export async function listDocuments() {
   const response = await fetch('/api/documents', {
     headers: { 'X-User-Id': USER_ID },
