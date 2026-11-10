@@ -7,7 +7,7 @@ const { createDocumentRepository } = require('./repositories/documentRepository'
 const { createDocumentService } = require('./services/documentService');
 const { createDocumentController } = require('./controllers/documentController');
 const { createDocumentRoutes } = require('./routes/documentRoutes');
-
+ 
 const DEFAULT_MAX_FILE_SIZE_BYTES = 10 * 1024 * 1024;
 
 function createUploadMiddleware(storageDirectory, maxFileSizeBytes) {
