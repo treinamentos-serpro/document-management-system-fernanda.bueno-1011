@@ -83,6 +83,15 @@ test('rejeita upload sem arquivo e respeita o limite de tamanho', async () => {
     const missingFile = await fetch(`${server.baseUrl}/upload`, { method: 'POST' });
     assert.equal(missingFile.status, 400);
 
+    const wrongFieldName = new FormData();
+    wrongFieldName.append('arquivo', new Blob(['abc'], { type: 'text/plain' }), 'a.txt');
+    const wrongField = await fetch(`${server.baseUrl}/upload`, {
+      method: 'POST',
+      body: wrongFieldName,
+    });
+    assert.equal(wrongField.status, 400);
+    assert.equal((await wrongField.json()).error.code, 'FILE_REQUIRED');
+
     const oversizedFile = await fetch(`${server.baseUrl}/upload`, {
       method: 'POST',
       body: createUploadForm('conteúdo maior que o limite'),

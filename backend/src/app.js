@@ -58,9 +58,20 @@ function createApp(options = {}) {
       return next(error);
     }
 
-    const isFileTooLarge = error instanceof multer.MulterError && error.code === 'LIMIT_FILE_SIZE';
-    const statusCode = isFileTooLarge ? 413 : (error.statusCode || 500);
-    const code = isFileTooLarge ? 'FILE_TOO_LARGE' : (error.code || 'INTERNAL_ERROR');
+    if (error instanceof multer.MulterError && error.code === 'LIMIT_FILE_SIZE') {
+      return response.status(413).json({
+        error: { code: 'FILE_TOO_LARGE', message: error.message },
+      });
+    }
+
+    if (error instanceof multer.MulterError) {
+      return response.status(400).json({
+        error: { code: 'FILE_REQUIRED', message: 'Envie um arquivo no campo "file".' },
+      });
+    }
+
+    const statusCode = error.statusCode || 500;
+    const code = error.code || 'INTERNAL_ERROR';
     const message = statusCode === 500 ? 'Erro interno do servidor.' : error.message;
 
     response.status(statusCode).json({ error: { code, message } });
